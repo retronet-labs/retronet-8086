@@ -83,17 +83,40 @@ Implementato e testato (`go test ./...` verde):
   per la validazione per-istruzione (dataset fuori dal repo). Vedi
   [docs/architettura.md](docs/architettura.md).
 
+## Validazione SingleStepTests (TomHarte)
+
+Su un sottoinsieme rappresentativo di ~70 opcode dei vettori per-istruzione 8088
+(648.000 casi) il core supera **~98,4%** (637.631/648.000), con i flag indefiniti
+mascherati per-opcode. Tutte le istruzioni a **comportamento definito** passano al
+100% (ALU 8/16 bit, MOV, shift/rotate, stringhe, MUL/IMUL, INC/DEC, salti, stack
+incluso il quirk PUSH SP, ecc.).
+
+I ~10.000 casi residui sono **comportamento indefinito** dell'8086, non bug:
+
+- `DIV`/`IDIV`/`AAM` in errore di divisione (#DE) impilano sullo stack i flag che
+  il silicio lascia indefiniti dopo l'operazione abortita (non mascherabili a
+  livello di byte di RAM);
+- `DAA`/`DAS` su input BCD **non validi** (nibble fuori 0-9), che producono
+  risultati specifici del silicio.
+
+Per riprodurre: scaricare i file `vN/*.json.gz` da
+[SingleStepTests/8088](https://github.com/SingleStepTests/8088) in una cartella e
+
+```bash
+go run ./cmd/retronet-8086 -testsuite <dir-vettori>   # oppure -alu native (piu' veloce)
+```
+
 In lavorazione (prossimi passi):
 
 - Disassembler simmetrico al decoder (per un trace leggibile).
-- Affinamento delle maschere dei flag indefiniti per massimizzare la resa su
-  SingleStepTests.
+- Replica opzionale dei flag indefiniti del silicio per i casi #DE (per la resa
+  totale su SingleStepTests).
 
 ## Sviluppo locale (multi-repo)
 
-Dipende da `retronet-hardware` (bridge `i8086`, non ancora taggato) e
-`retronet-logic`. In locale si usano i checkout sibling con un `go.work` (non
-versionato):
+Dipende da `retronet-hardware` (bridge `i8086`, da `v0.7.1`) e `retronet-logic`.
+Un clone pulito compila dalle versioni pubblicate; per co-sviluppare in locale si
+usano i checkout sibling con un `go.work` (non versionato):
 
 ```sh
 # clona retronet-logic, retronet-hardware e retronet-8086 come cartelle sibling
