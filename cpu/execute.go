@@ -77,7 +77,7 @@ func (c *CPU8086) execute(op byte, pfx prefixes) error {
 
 	// --- PUSH/POP ---
 	case 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57:
-		c.push16(c.Regs[op&0x07])
+		c.pushReg(Reg16(op & 0x07))
 	case 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F:
 		c.Regs[op&0x07] = c.pop16()
 	case 0x06:
@@ -598,8 +598,19 @@ func (c *CPU8086) group0xFF(pfx prefixes) {
 		c.IP = c.readMem16(m.seg, m.off)
 		c.Seg[CS] = c.readMem16(m.seg, m.off+2)
 	case 6: // PUSH r/m16
-		c.push16(c.rmRead(m, true))
+		if !m.mem {
+			c.pushReg(Reg16(m.rm)) // gestisce il quirk PUSH SP
+		} else {
+			c.push16(c.rmRead(m, true))
+		}
 	}
+}
+
+// pushReg impila un registro a 16 bit rispettando il quirk dell'8086: PUSH SP
+// impila il valore di SP *dopo* il decremento (lo si legge dopo aver abbassato SP).
+func (c *CPU8086) pushReg(r Reg16) {
+	c.Regs[SP] -= 2
+	c.writeMem16(c.Seg[SS], c.Regs[SP], c.Regs[r])
 }
 
 // condition valuta la condizione a 4 bit dei salti condizionati (0x70-0x7F).
