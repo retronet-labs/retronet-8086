@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/retronet-labs/retronet-8086/conformance"
 	"github.com/retronet-labs/retronet-8086/cpu"
 	"github.com/retronet-labs/retronet-8086/testsuite"
 )
@@ -16,6 +17,7 @@ func main() {
 	steps := flag.Int("steps", 100000, "numero massimo di istruzioni")
 	trace := flag.Bool("trace", false, "stampa i registri a ogni istruzione")
 	profiles := flag.Bool("profiles", false, "elenca i profili di chip disponibili")
+	conf := flag.Bool("conformance", false, "esegue la batteria di conformance sintetica")
 	aluName := flag.String("alu", "gate", "backend ALU: gate oppure native")
 	loadSeg := flag.Int("seg", 0x0000, "segmento di caricamento (CS)")
 	loadOff := flag.Int("off", 0x0100, "offset di caricamento (IP)")
@@ -27,6 +29,9 @@ func main() {
 		for _, p := range cpu.Profiles() {
 			fmt.Printf("%-6s bus dati %d bit, coda prefetch %d byte\n", p.Name, p.DataBusBits, p.PrefetchBytes)
 		}
+		return
+	case *conf:
+		runConformance(backendFor(*aluName))
 		return
 	case *suite != "":
 		runSuite(*suite, backendFor(*aluName))
@@ -83,6 +88,21 @@ func printState(c *cpu.CPU8086) {
 		c.Regs[cpu.AX], c.Regs[cpu.BX], c.Regs[cpu.CX], c.Regs[cpu.DX],
 		c.Regs[cpu.SP], c.Regs[cpu.BP], c.Regs[cpu.SI], c.Regs[cpu.DI],
 		c.Seg[cpu.DS], c.Seg[cpu.ES], c.Seg[cpu.SS], c.PackFlags())
+}
+
+func runConformance(backend cpu.ALUBackend) {
+	res := conformance.Run(backend)
+	for _, c := range res.Cases {
+		status := "ok"
+		if !c.OK {
+			status = "FALLITO: " + c.Detail
+		}
+		fmt.Printf("[%s] %s\n", status, c.Name)
+	}
+	fmt.Printf("conformance: %d/%d superati\n", res.Passed(), len(res.Cases))
+	if res.Failed() > 0 {
+		os.Exit(1)
+	}
 }
 
 func runSuite(dir string, backend cpu.ALUBackend) {
