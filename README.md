@@ -1,0 +1,95 @@
+# retronet-8086 — Emulatore Intel 8086/8088
+
+Emulatore della CPU Intel 8086/8088 in real mode, scritto in Go, parte
+dell'ecosistema **RetroNet**. Segue la filosofia dei moduli 4004/8008/8080: core
+importabile, due ALU intercambiabili (a **porte logiche** e **native**),
+test e documentazione in italiano.
+
+È il motore del futuro **retronet-pc** (un IBM PC/XT compatibile): per questo il
+profilo di default è l'**8088** e la memoria è già segmentata su 1 MB.
+
+## Le due ALU (gate e native)
+
+Come gli altri core RetroNet, l'aritmetica è delegata a un backend
+intercambiabile, identico nei risultati e nei flag (garanzia del test
+differenziale `TestGateVsNativeALUDifferential`):
+
+- `cpu.Gate` (default) — l'ALU costruita dalle sole **porte logiche** di
+  `retronet-logic`, raggiunta dal bridge
+  [`retronet-hardware/bridge/i8086`](https://github.com/retronet-labs/retronet-hardware).
+  Anche **moltiplicazione** (shift-and-add) e **divisione** (a ripristino) sono
+  composte sul sommatore a gate.
+- `cpu.Native` — la stessa semantica con gli operatori di Go: più veloce, fa da
+  oracolo del differenziale.
+
+```go
+c := cpu.NewCPU8086()        // ALU a porte (default), profilo 8088
+c.SetALU(cpu.Native)         // oppure: cpu.NewCPU8086WithALU(cpu.Native)
+```
+
+## Profili 8086 / 8088
+
+ISA, risultati e flag sono identici; cambiano solo bus dati esterno e coda di
+prefetch (e quindi il timing):
+
+```go
+c.Profile = cpu.Profile8086 // 16 bit, coda 6 byte
+c.Profile = cpu.Profile8088 // 8 bit,  coda 4 byte (default, IBM XT)
+```
+
+## Esempio
+
+```go
+c := cpu.NewCPU8086()
+c.Seg[cpu.CS], c.IP = 0x0000, 0x0100
+c.Mem.(*cpu.RAM).LoadAt(cpu.PhysAddr(0x0000, 0x0100), []byte{
+    0xB8, 0x00, 0x00, // MOV AX,0
+    0xB9, 0x05, 0x00, // MOV CX,5
+    0x01, 0xC8, // ADD AX,CX
+    0xE2, 0xFC, // LOOP -4
+    0xF4, // HLT
+})
+c.Run(1000)        // AX = 15, calcolato sull'ALU a porte
+```
+
+## Stato
+
+Implementato e testato (`go test ./...` verde):
+
+- Registri (AX..DI con mezzi-registri AL/AH...), segmenti, FLAGS a 16 bit con i
+  bit riservati dell'8086, indirizzamento fisico a 20 bit con wrap a 1 MB.
+- Backend ALU **Gate**/**Native** con flag CF/PF/AF/ZF/SF/OF, INC/DEC,
+  MUL/IMUL, DIV/IDIV — differenziale esaustivo a 8 bit, campionato a 16 bit.
+- Decodifica ModR/M (indirizzamento a 16 bit, override di segmento) e famiglie:
+  MOV (tutte le forme), blocco aritmetico-logico completo (`00`-`3D` e gruppo
+  `80`-`83`), INC/DEC, PUSH/POP (registri, segmenti, `PUSHF`/`POPF`), XCHG,
+  TEST, NOT/NEG/MUL/DIV (`F6`/`F7`), salti e `Jcc`, `LOOP`/`JCXZ`,
+  CALL/RET(F), INT/IRET/INTO (con #DE su divisione per zero), operazioni sui
+  flag, CBW/CWD, SAHF/LAHF, IN/OUT, HLT, prefissi (override di segmento, LOCK,
+  REP).
+
+In lavorazione (prossimi passi):
+
+- Istruzioni stringa `MOVS/STOS/LODS/SCAS/CMPS` + `REP`, shift/rotate
+  (`D0`-`D3`, richiede uno `Shift` a gate nel bridge), aggiustamenti BCD,
+  `LDS`/`LES`/`XLAT`.
+- Disassembler simmetrico al decoder.
+- CLI `cmd/retronet-8086` e loader della suite **SingleStepTests** (TomHarte)
+  per la validazione per-istruzione (dataset fuori dal repo).
+- Documentazione didattica in `docs/`.
+
+## Sviluppo locale (multi-repo)
+
+Dipende da `retronet-hardware` (bridge `i8086`, non ancora taggato) e
+`retronet-logic`. In locale si usano i checkout sibling con un `go.work` (non
+versionato):
+
+```sh
+# clona retronet-logic, retronet-hardware e retronet-8086 come cartelle sibling
+go work init . ../retronet-hardware ../retronet-logic   # già presente nel repo
+go test ./...
+```
+
+## Licenza
+
+MIT.

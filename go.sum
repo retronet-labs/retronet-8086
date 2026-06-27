@@ -1,0 +1,4 @@
+github.com/retronet-labs/retronet-hardware v0.6.0 h1:J8QtwxKqnPbJbaP4miQTYoDsMAT9q1oZ1jJjpoC1brM=
+github.com/retronet-labs/retronet-hardware v0.6.0/go.mod h1:klg76vkbOGJTs0JUwvozlangmKEjCTvFgnfyXHlPh8M=
+github.com/retronet-labs/retronet-logic v0.4.0 h1:Ab3WeUBDf+8H4z8JXRqT7m2QdypdDHv/QiCIObApQWA=
+github.com/retronet-labs/retronet-logic v0.4.0/go.mod h1:Nx1pOm7mQR4Sv+k5xEXffBNkzAXB70t8RcmQIHM5UKU=
