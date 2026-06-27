@@ -257,6 +257,16 @@ func (c *CPU8086) execute(op byte, pfx prefixes) error {
 	case 0xEF:
 		c.out16(c.Regs[DX], c.Regs[AX])
 
+	// --- shift e rotate ---
+	case 0xD0:
+		c.shiftRM(false, 1, pfx)
+	case 0xD1:
+		c.shiftRM(true, 1, pfx)
+	case 0xD2:
+		c.shiftRM(false, c.Get8(CL), pfx)
+	case 0xD3:
+		c.shiftRM(true, c.Get8(CL), pfx)
+
 	// --- controllo ---
 	case 0xF4: // HLT
 		c.Halted = true
@@ -400,6 +410,28 @@ func (c *CPU8086) div(m modrm, w, signed bool) {
 		}
 		c.Set8(AL, byte(q))
 		c.Set8(AH, byte(r))
+	}
+}
+
+// shiftRM esegue uno shift/rotate (gruppo D0-D3) sull'operando r/m. Con count==0
+// l'8086 non tocca nulla (l'operando ed eventuale displacement sono comunque
+// consumati dalla decodifica). OF e' definito solo per count==1; le rotazioni non
+// modificano SF/ZF/PF.
+func (c *CPU8086) shiftRM(w bool, count byte, pfx prefixes) {
+	m := c.decodeModRM(pfx)
+	if count == 0 {
+		return
+	}
+	res, f, isRotate := c.backend().Shift(m.reg, c.rmRead(m, w), count, width(w), c.CF)
+	c.rmWrite(m, w, res)
+	c.CF = f.Carry
+	if count == 1 {
+		c.OF = f.Overflow
+	}
+	if !isRotate {
+		c.SF = f.Sign
+		c.ZF = f.Zero
+		c.PF = f.Parity
 	}
 }
 

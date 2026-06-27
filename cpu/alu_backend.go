@@ -28,6 +28,9 @@ type ALUBackend interface {
 	// Div divide il dividendo (2*width bit) per divisor, con ok=false in caso di
 	// errore di divisione (#DE): divisore nullo o quoziente fuori intervallo.
 	Div(dividend uint32, divisor uint16, width int, signed bool) (quot, rem uint16, ok bool)
+	// Shift esegue uno shift/rotate (count >= 1), restituendo risultato, flag e se
+	// si tratta di una rotazione (che non tocca SF/ZF/PF).
+	Shift(op byte, value uint16, count byte, width int, carryIn bool) (uint16, i8086.ShiftFlags, bool)
 }
 
 // Gate e' il backend costruito dalle porte logiche (default).
@@ -57,6 +60,10 @@ func (gateBackend) Mul(a, b uint16, width int, signed bool) (uint32, bool) {
 
 func (gateBackend) Div(dividend uint32, divisor uint16, width int, signed bool) (uint16, uint16, bool) {
 	return i8086.Div(dividend, divisor, width, signed)
+}
+
+func (gateBackend) Shift(op byte, value uint16, count byte, width int, carryIn bool) (uint16, i8086.ShiftFlags, bool) {
+	return i8086.Shift(op, value, count, width, carryIn)
 }
 
 // SetALU sceglie il backend aritmetico-logico (Gate o Native).

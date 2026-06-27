@@ -106,6 +106,22 @@ func TestCmpAndConditionalJump(t *testing.T) {
 	}
 }
 
+// SHL AL,CL sull'ALU a gate: 1 << 4 = 0x10.
+//
+//	MOV AL,1 ; MOV CL,4 ; SHL AL,CL ; HLT
+func TestShiftLeftByCL(t *testing.T) {
+	code := []byte{
+		0xB0, 0x01, // MOV AL,1
+		0xB1, 0x04, // MOV CL,4
+		0xD2, 0xE0, // SHL AL,CL   (D2 /4, ModRM 11 100 000)
+		0xF4, // HLT
+	}
+	c := run(t, Gate, code)
+	if c.Get8(AL) != 0x10 {
+		t.Errorf("AL=%#02x, atteso 0x10", c.Get8(AL))
+	}
+}
+
 // La divisione per zero deve sollevare INT 0 e saltare al gestore puntato dal
 // vettore 0. Il gestore qui e' un HLT a 0000:0200.
 func TestDivByZeroRaisesInterrupt0(t *testing.T) {

@@ -158,3 +158,64 @@ func (nativeBackend) Div(dividend uint32, divisor uint16, width int, signed bool
 	}
 	return uint16(uint32(q) & mask), uint16(uint32(r) & mask), true
 }
+
+func b2u(v bool) uint32 {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+func (nativeBackend) Shift(op byte, value uint16, count byte, width int, carryIn bool) (uint16, i8086.ShiftFlags, bool) {
+	mask := widthMask(width)
+	v := uint32(value) & mask
+	cf := carryIn
+	o := op & 0x07
+	for i := byte(0); i < count; i++ {
+		switch o {
+		case i8086.ShiftROL:
+			top := v >> uint(width-1) & 1
+			v = (v<<1 | top) & mask
+			cf = top == 1
+		case i8086.ShiftROR:
+			bot := v & 1
+			v = v>>1 | bot<<uint(width-1)
+			cf = bot == 1
+		case i8086.ShiftRCL:
+			top := v >> uint(width-1) & 1
+			v = (v<<1 | b2u(cf)) & mask
+			cf = top == 1
+		case i8086.ShiftRCR:
+			bot := v & 1
+			v = v>>1 | b2u(cf)<<uint(width-1)
+			cf = bot == 1
+		case i8086.ShiftSHR:
+			cf = v&1 == 1
+			v >>= 1
+		case i8086.ShiftSAR:
+			cf = v&1 == 1
+			v = v>>1 | (v>>uint(width-1)&1)<<uint(width-1)
+		default: // SHL e alias 6
+			cf = v>>uint(width-1)&1 == 1
+			v = v << 1 & mask
+		}
+	}
+	res := uint16(v)
+	f := i8086.ShiftFlags{
+		Carry:  cf,
+		Sign:   uint32(res)>>uint(width-1)&1 == 1,
+		Zero:   uint32(res)&mask == 0,
+		Parity: parityEvenLow8(uint32(res)),
+	}
+	switch o {
+	case i8086.ShiftSHL, 6, i8086.ShiftROL, i8086.ShiftRCL:
+		f.Overflow = f.Sign != cf
+	case i8086.ShiftSHR:
+		f.Overflow = value>>uint(width-1)&1 == 1
+	case i8086.ShiftSAR:
+		f.Overflow = false
+	default: // ROR, RCR
+		f.Overflow = f.Sign != (uint32(res)>>uint(width-2)&1 == 1)
+	}
+	return res, f, o <= i8086.ShiftRCR
+}

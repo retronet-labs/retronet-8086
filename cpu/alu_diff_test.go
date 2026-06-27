@@ -86,6 +86,36 @@ func TestGateVsNativeMul(t *testing.T) {
 	}
 }
 
+func TestGateVsNativeShift(t *testing.T) {
+	ops := []byte{
+		i8086.ShiftROL, i8086.ShiftROR, i8086.ShiftRCL, i8086.ShiftRCR,
+		i8086.ShiftSHL, i8086.ShiftSHR, i8086.ShiftSAR, 6,
+	}
+	for _, width := range []int{8, 16} {
+		hi, step := 0xFF, 1
+		if width == 16 {
+			hi, step = 0xFFFF, 257
+		}
+		for _, op := range ops {
+			for v := 0; v <= hi; v += step {
+				for count := byte(0); count <= 18; count++ {
+					for _, cin := range []bool{false, true} {
+						if count == 0 {
+							continue // count==0 e' gestito dal chiamante, non dal backend
+						}
+						gr, gf, gro := Gate.Shift(op, uint16(v), count, width, cin)
+						nr, nf, nro := Native.Shift(op, uint16(v), count, width, cin)
+						if gr != nr || gf != nf || gro != nro {
+							t.Fatalf("Shift op=%d w=%d v=%#x n=%d cin=%v: gate(%#x,%+v) native(%#x,%+v)",
+								op, width, v, count, cin, gr, gf, nr, nf)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestGateVsNativeDiv(t *testing.T) {
 	for _, signed := range []bool{false, true} {
 		const step8 = 131
