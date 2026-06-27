@@ -185,7 +185,10 @@ func (c *CPU8086) execute(op byte, pfx prefixes) error {
 		seg := c.fetch16()
 		c.IP, c.Seg[CS] = off, seg
 	case 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
-		0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F:
+		0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+		// 0x60-0x6F: sull'8088 sono alias non documentati dei salti condizionati.
+		0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+		0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F:
 		rel := int8(c.fetch8())
 		if c.condition(op & 0x0F) {
 			c.IP = uint16(int32(c.IP) + int32(rel))
@@ -565,6 +568,15 @@ func (c *CPU8086) shiftRM(w bool, count byte, pfx prefixes) {
 	if count == 0 {
 		return
 	}
+	if m.reg == 6 {
+		// SETMO/SETMOC (8088 non documentata): l'operando diventa tutti-uno e i
+		// flag sono quelli di un risultato logico (CF/OF azzerati, AF indefinito).
+		c.rmWrite(m, w, maskW(w))
+		_, f := c.backend().ALU(i8086.GroupOR, maskW(w), maskW(w), width(w), false)
+		c.SF, c.ZF, c.PF = f.Sign, f.Zero, f.Parity
+		c.CF, c.OF = false, false
+		return
+	}
 	res, f, isRotate := c.backend().Shift(m.reg, c.rmRead(m, w), count, width(w), c.CF)
 	c.rmWrite(m, w, res)
 	c.CF = f.Carry
@@ -618,7 +630,7 @@ func (c *CPU8086) group0xFF(pfx prefixes) {
 	case 5: // JMP m16:16 (far indiretto)
 		c.IP = c.readMem16(m.seg, m.off)
 		c.Seg[CS] = c.readMem16(m.seg, m.off+2)
-	case 6: // PUSH r/m16
+	case 6, 7: // PUSH r/m16 (7 e' un alias non documentato di 6 sull'8088)
 		if !m.mem {
 			c.pushReg(Reg16(m.rm)) // gestisce il quirk PUSH SP
 		} else {
