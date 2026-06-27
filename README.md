@@ -37,6 +37,16 @@ c.Profile = cpu.Profile8086 // 16 bit, coda 6 byte
 c.Profile = cpu.Profile8088 // 8 bit,  coda 4 byte (default, IBM XT)
 ```
 
+## CLI
+
+```bash
+go run ./cmd/retronet-8086 -profiles                 # elenca 8086/8088
+go run ./cmd/retronet-8086 -conformance              # batteria sintetica
+go run ./cmd/retronet-8086 -bin prog.bin -trace      # esegue un binario raw
+go run ./cmd/retronet-8086 -bin prog.bin -alu native # con ALU native
+go run ./cmd/retronet-8086 -testsuite <dir-vettori>  # SingleStepTests 8088
+```
+
 ## Esempio
 
 ```go
@@ -63,20 +73,21 @@ Implementato e testato (`go test ./...` verde):
 - Decodifica ModR/M (indirizzamento a 16 bit, override di segmento) e famiglie:
   MOV (tutte le forme), blocco aritmetico-logico completo (`00`-`3D` e gruppo
   `80`-`83`), INC/DEC, PUSH/POP (registri, segmenti, `PUSHF`/`POPF`), XCHG,
-  TEST, NOT/NEG/MUL/DIV (`F6`/`F7`), salti e `Jcc`, `LOOP`/`JCXZ`,
+  TEST, NOT/NEG/MUL/DIV (`F6`/`F7`), shift/rotate (`D0`-`D3`), istruzioni stringa
+  `MOVS/STOS/LODS/SCAS/CMPS` con `REP`/`REPNE`, `LDS`/`LES`/`XLAT`, aggiustamenti
+  BCD/ASCII (`DAA/DAS/AAA/AAS/AAM/AAD`), salti e `Jcc`, `LOOP`/`JCXZ`,
   CALL/RET(F), INT/IRET/INTO (con #DE su divisione per zero), operazioni sui
-  flag, CBW/CWD, SAHF/LAHF, IN/OUT, HLT, prefissi (override di segmento, LOCK,
-  REP).
+  flag, CBW/CWD, SAHF/LAHF, IN/OUT, HLT, prefissi (override di segmento, LOCK, REP).
+- CLI `cmd/retronet-8086` (esecuzione raw, profili, conformance, testsuite),
+  batteria di **conformance** sintetica e loader **SingleStepTests** (TomHarte)
+  per la validazione per-istruzione (dataset fuori dal repo). Vedi
+  [docs/architettura.md](docs/architettura.md).
 
 In lavorazione (prossimi passi):
 
-- Istruzioni stringa `MOVS/STOS/LODS/SCAS/CMPS` + `REP`, shift/rotate
-  (`D0`-`D3`, richiede uno `Shift` a gate nel bridge), aggiustamenti BCD,
-  `LDS`/`LES`/`XLAT`.
-- Disassembler simmetrico al decoder.
-- CLI `cmd/retronet-8086` e loader della suite **SingleStepTests** (TomHarte)
-  per la validazione per-istruzione (dataset fuori dal repo).
-- Documentazione didattica in `docs/`.
+- Disassembler simmetrico al decoder (per un trace leggibile).
+- Affinamento delle maschere dei flag indefiniti per massimizzare la resa su
+  SingleStepTests.
 
 ## Sviluppo locale (multi-repo)
 
