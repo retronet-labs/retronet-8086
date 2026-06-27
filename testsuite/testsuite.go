@@ -10,6 +10,7 @@ package testsuite
 import (
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -45,15 +46,17 @@ type Options struct {
 	StopOnFirstFailure bool
 }
 
-// Result riassume l'esito di una o piu' esecuzioni.
+// Result riassume l'esito di una o piu' esecuzioni, separando i veri errori
+// (risultato sbagliato) dagli opcode non ancora implementati e dai passaggi.
 type Result struct {
-	Total    int
-	Passed   int
-	Failures []string
+	Total         int
+	Passed        int
+	Unimplemented int // opcode che il core non gestisce ancora (buco di copertura)
+	Failures      []string
 }
 
-// Failed restituisce i vettori non passati.
-func (r Result) Failed() int { return r.Total - r.Passed }
+// Failed restituisce i vettori con risultato sbagliato (esclusi i non implementati).
+func (r Result) Failed() int { return r.Total - r.Passed - r.Unimplemented }
 
 // RunDir esegue tutti i file .json/.json.gz nella directory (ordinati per nome).
 func RunDir(dir string, opt Options) (Result, error) {
@@ -81,6 +84,7 @@ func RunDir(dir string, opt Options) (Result, error) {
 		}
 		total.Total += r.Total
 		total.Passed += r.Passed
+		total.Unimplemented += r.Unimplemented
 		total.Failures = append(total.Failures, r.Failures...)
 	}
 	return total, nil
@@ -134,9 +138,13 @@ func RunBytes(data []byte, opt Options) (Result, error) {
 			break
 		}
 		r.Total++
-		if msg, ok := runVector(c, &touched, v, opt.FlagMask); ok {
+		msg, ok, unimplemented := runVector(c, &touched, v, opt.FlagMask)
+		switch {
+		case ok:
 			r.Passed++
-		} else {
+		case unimplemented:
+			r.Unimplemented++
+		default:
 			r.Failures = append(r.Failures, fmt.Sprintf("%s: %s", v.Name, msg))
 			if opt.StopOnFirstFailure {
 				break
@@ -149,7 +157,7 @@ func RunBytes(data []byte, opt Options) (Result, error) {
 // runVector ripristina la CPU riusata, imposta lo stato iniziale, esegue uno Step
 // e confronta col finale. touched accumula le celle scritte da azzerare prima del
 // vettore successivo.
-func runVector(c *cpu.CPU8086, touched *[]uint32, v vector, flagMask uint16) (string, bool) {
+func runVector(c *cpu.CPU8086, touched *[]uint32, v vector, flagMask uint16) (msg string, ok, unimplemented bool) {
 	for _, a := range *touched {
 		c.Mem.Write8(a, 0)
 	}
@@ -167,16 +175,21 @@ func runVector(c *cpu.CPU8086, touched *[]uint32, v vector, flagMask uint16) (st
 	}
 
 	if err := c.Step(); err != nil {
-		return "Step: " + err.Error(), false
+		var unimpl *cpu.UnimplementedError
+		if errors.As(err, &unimpl) {
+			return "opcode non implementato", false, true
+		}
+		return "Step: " + err.Error(), false, false
 	}
 	// Ai flag ignorati richiesti si aggiungono quelli che l'8086 lascia
 	// *indefiniti* per questa istruzione (e che il silicio riempie in modo non
 	// documentato): vanno esclusi dal confronto.
 	mask := flagMask | undefinedFlagMask(v.Bytes)
-	if msg, ok := checkRegs(c, v.Final.Regs, mask); !ok {
-		return msg, false
+	if m, good := checkRegs(c, v.Final.Regs, mask); !good {
+		return m, false, false
 	}
-	return checkRAM(c, v.Final.RAM)
+	m, good := checkRAM(c, v.Final.RAM)
+	return m, good, false
 }
 
 // undefinedFlagMask restituisce i bit di flag lasciati indefiniti dall'8086 per

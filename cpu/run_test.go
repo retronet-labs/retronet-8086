@@ -149,6 +149,35 @@ func TestRepMovsb(t *testing.T) {
 	}
 }
 
+// CALL far diretto + RETF: chiamata a 3000:0000 e ritorno.
+func TestCallFarAndRetf(t *testing.T) {
+	code := []byte{
+		0x9A, 0x00, 0x00, 0x00, 0x30, // CALL 3000:0000
+		0xF4, // HLT (ritorno qui)
+	}
+	c := loadProgram(Gate, code)
+	// A 3000:0000 un RETF.
+	c.Mem.(*RAM).LoadAt(PhysAddr(0x3000, 0x0000), []byte{0xCB})
+	if _, err := c.Run(100); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Halted || c.Seg[CS] != 0x0000 || c.IP != 0x0106 {
+		t.Fatalf("CS:IP=%04X:%04X halted=%v, atteso 0000:0106", c.Seg[CS], c.IP, c.Halted)
+	}
+	if c.Regs[SP] != 0xFFFE {
+		t.Errorf("SP=%#04x, stack non bilanciato", c.Regs[SP])
+	}
+}
+
+// SALC: AL = 0xFF se CF, altrimenti 0x00.
+func TestSALC(t *testing.T) {
+	code := []byte{0xF9, 0xD6, 0xF4} // STC ; SALC ; HLT
+	c := run(t, Gate, code)
+	if c.Get8(AL) != 0xFF {
+		t.Errorf("SALC con CF=1: AL=%#02x, atteso 0xFF", c.Get8(AL))
+	}
+}
+
 // La divisione per zero deve sollevare INT 0 e saltare al gestore puntato dal
 // vettore 0. Il gestore qui e' un HLT a 0000:0200.
 func TestDivByZeroRaisesInterrupt0(t *testing.T) {

@@ -111,10 +111,11 @@ func runSuite(dir string, backend cpu.ALUBackend) {
 		fmt.Fprintln(os.Stderr, "errore:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("SingleStepTests: %d/%d passati (%d falliti)\n", res.Passed, res.Total, res.Failed())
+	fmt.Printf("SingleStepTests: %d/%d passati (%d errati, %d non implementati)\n",
+		res.Passed, res.Total, res.Failed(), res.Unimplemented)
 	for i, f := range res.Failures {
 		if i >= 30 {
-			fmt.Printf("... e altri %d fallimenti\n", res.Failed()-30)
+			fmt.Printf("... e altri %d errori\n", res.Failed()-30)
 			break
 		}
 		fmt.Println(" ", f)

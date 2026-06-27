@@ -212,16 +212,22 @@ func (c *CPU8086) execute(op byte, pfx prefixes) error {
 		rel := int16(c.fetch16())
 		c.push16(c.IP)
 		c.IP = uint16(int32(c.IP) + int32(rel))
-	case 0xC3: // RET
+	case 0x9A: // CALL far ptr16:16 (diretto)
+		off := c.fetch16()
+		seg := c.fetch16()
+		c.push16(c.Seg[CS])
+		c.push16(c.IP)
+		c.IP, c.Seg[CS] = off, seg
+	case 0xC3, 0xC1: // RET (0xC1 alias 8088)
 		c.IP = c.pop16()
-	case 0xC2: // RET imm16
+	case 0xC2, 0xC0: // RET imm16 (0xC0 alias 8088)
 		n := c.fetch16()
 		c.IP = c.pop16()
 		c.Regs[SP] += n
-	case 0xCB: // RETF
+	case 0xCB, 0xC9: // RETF (0xC9 alias 8088)
 		c.IP = c.pop16()
 		c.Seg[CS] = c.pop16()
-	case 0xCA: // RETF imm16
+	case 0xCA, 0xC8: // RETF imm16 (0xC8 alias 8088)
 		n := c.fetch16()
 		c.IP = c.pop16()
 		c.Seg[CS] = c.pop16()
@@ -296,6 +302,21 @@ func (c *CPU8086) execute(op byte, pfx prefixes) error {
 		c.shiftRM(false, c.Get8(CL), pfx)
 	case 0xD3:
 		c.shiftRM(true, c.Get8(CL), pfx)
+
+	// --- segmenti, coprocessore, varie ---
+	case 0x0F: // POP CS (solo 8086, raro)
+		c.Seg[CS] = c.pop16()
+	case 0x9B: // WAIT: senza coprocessore e' un no-op
+	case 0xD6: // SALC (non documentata): AL = CF ? 0xFF : 0x00
+		if c.CF {
+			c.Set8(AL, 0xFF)
+		} else {
+			c.Set8(AL, 0x00)
+		}
+	case 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF:
+		// ESC: escape al coprocessore. Senza 8087 la CPU legge l'operando
+		// (consuma il ModR/M) ma non modifica alcuno stato.
+		c.decodeModRM(pfx)
 
 	// --- controllo ---
 	case 0xF4: // HLT
