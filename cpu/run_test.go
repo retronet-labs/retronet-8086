@@ -122,6 +122,33 @@ func TestShiftLeftByCL(t *testing.T) {
 	}
 }
 
+// REP MOVSB copia un blocco da DS:SI a ES:DI.
+//
+//	MOV SI,0x300 ; MOV DI,0x400 ; MOV CX,5 ; REP MOVSB ; HLT
+func TestRepMovsb(t *testing.T) {
+	code := []byte{
+		0xBE, 0x00, 0x03, // MOV SI,0x0300
+		0xBF, 0x00, 0x04, // MOV DI,0x0400
+		0xB9, 0x05, 0x00, // MOV CX,5
+		0xF3, 0xA4, // REP MOVSB
+		0xF4, // HLT
+	}
+	c := loadProgram(Gate, code)
+	src := []byte{0x11, 0x22, 0x33, 0x44, 0x55}
+	c.Mem.(*RAM).LoadAt(0x0300, src)
+	if _, err := c.Run(1000); err != nil {
+		t.Fatalf("esecuzione fallita: %v", err)
+	}
+	for i, b := range src {
+		if got := c.Mem.Read8(uint32(0x0400 + i)); got != b {
+			t.Errorf("dest[%d]=%#02x, atteso %#02x", i, got, b)
+		}
+	}
+	if c.Regs[CX] != 0 {
+		t.Errorf("CX=%d, atteso 0", c.Regs[CX])
+	}
+}
+
 // La divisione per zero deve sollevare INT 0 e saltare al gestore puntato dal
 // vettore 0. Il gestore qui e' un HLT a 0000:0200.
 func TestDivByZeroRaisesInterrupt0(t *testing.T) {

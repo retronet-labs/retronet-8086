@@ -257,6 +257,22 @@ func (c *CPU8086) execute(op byte, pfx prefixes) error {
 	case 0xEF:
 		c.out16(c.Regs[DX], c.Regs[AX])
 
+	// --- istruzioni stringa (con eventuale prefisso REP/REPNE) ---
+	case 0xA4, 0xA5, 0xA6, 0xA7, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF:
+		c.stringOp(op, pfx)
+
+	// --- LDS/LES/XLAT ---
+	case 0xC4: // LES r16, m16:16
+		m := c.decodeModRM(pfx)
+		c.Regs[m.reg] = c.readMem16(m.seg, m.off)
+		c.Seg[ES] = c.readMem16(m.seg, m.off+2)
+	case 0xC5: // LDS r16, m16:16
+		m := c.decodeModRM(pfx)
+		c.Regs[m.reg] = c.readMem16(m.seg, m.off)
+		c.Seg[DS] = c.readMem16(m.seg, m.off+2)
+	case 0xD7: // XLAT: AL = [DS:BX+AL]
+		c.Set8(AL, c.readMem8(c.segFor(DS, pfx), c.Regs[BX]+uint16(c.Get8(AL))))
+
 	// --- shift e rotate ---
 	case 0xD0:
 		c.shiftRM(false, 1, pfx)
@@ -411,6 +427,98 @@ func (c *CPU8086) div(m modrm, w, signed bool) {
 		c.Set8(AL, byte(q))
 		c.Set8(AH, byte(r))
 	}
+}
+
+// stringOp esegue un'istruzione stringa (MOVS/STOS/LODS/SCAS/CMPS), una volta
+// oppure ripetuta dal prefisso REP/REPNE. La sorgente usa DS (con override), la
+// destinazione sempre ES; SI/DI avanzano di 1 o 2 secondo la larghezza e il
+// Direction Flag.
+func (c *CPU8086) stringOp(op byte, pfx prefixes) {
+	w := op&0x01 == 1
+	delta := uint16(1)
+	if w {
+		delta = 2
+	}
+	step := delta
+	if c.DF {
+		step = -delta
+	}
+	srcSeg := c.segFor(DS, pfx)
+
+	one := func() {
+		switch op {
+		case 0xA4, 0xA5: // MOVS
+			c.writeMemN(c.Seg[ES], c.Regs[DI], w, c.readMemN(srcSeg, c.Regs[SI], w))
+			c.Regs[SI] += step
+			c.Regs[DI] += step
+		case 0xAA, 0xAB: // STOS
+			c.writeMemN(c.Seg[ES], c.Regs[DI], w, c.acc(w))
+			c.Regs[DI] += step
+		case 0xAC, 0xAD: // LODS
+			c.setAcc(w, c.readMemN(srcSeg, c.Regs[SI], w))
+			c.Regs[SI] += step
+		case 0xAE, 0xAF: // SCAS: confronta acc con [ES:DI]
+			_, f := c.backend().ALU(i8086.GroupCMP, c.acc(w), c.readMemN(c.Seg[ES], c.Regs[DI], w), width(w), false)
+			c.applyArithFlags(f)
+			c.Regs[DI] += step
+		case 0xA6, 0xA7: // CMPS: confronta [DS:SI] con [ES:DI]
+			_, f := c.backend().ALU(i8086.GroupCMP, c.readMemN(srcSeg, c.Regs[SI], w), c.readMemN(c.Seg[ES], c.Regs[DI], w), width(w), false)
+			c.applyArithFlags(f)
+			c.Regs[SI] += step
+			c.Regs[DI] += step
+		}
+	}
+
+	if pfx.rep == 0 {
+		one()
+		return
+	}
+
+	// Con REP: ripeti finche' CX != 0. Per SCAS/CMPS l'uscita dipende anche da ZF
+	// (REP/REPE = while ZF==1, REPNE = while ZF==0).
+	isCompare := op == 0xA6 || op == 0xA7 || op == 0xAE || op == 0xAF
+	for c.Regs[CX] != 0 {
+		one()
+		c.Regs[CX]--
+		if isCompare {
+			if pfx.rep == 0xF3 && !c.ZF {
+				break
+			}
+			if pfx.rep == 0xF2 && c.ZF {
+				break
+			}
+		}
+	}
+}
+
+func (c *CPU8086) readMemN(seg, off uint16, w bool) uint16 {
+	if w {
+		return c.readMem16(seg, off)
+	}
+	return uint16(c.readMem8(seg, off))
+}
+
+func (c *CPU8086) writeMemN(seg, off uint16, w bool, v uint16) {
+	if w {
+		c.writeMem16(seg, off, v)
+		return
+	}
+	c.writeMem8(seg, off, byte(v))
+}
+
+func (c *CPU8086) acc(w bool) uint16 {
+	if w {
+		return c.Regs[AX]
+	}
+	return uint16(c.Get8(AL))
+}
+
+func (c *CPU8086) setAcc(w bool, v uint16) {
+	if w {
+		c.Regs[AX] = v
+		return
+	}
+	c.Set8(AL, byte(v))
 }
 
 // shiftRM esegue uno shift/rotate (gruppo D0-D3) sull'operando r/m. Con count==0
