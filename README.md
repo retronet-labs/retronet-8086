@@ -85,13 +85,13 @@ Implementato e testato (`go test ./...` verde):
 
 ## Validazione SingleStepTests (TomHarte)
 
-Su un sottoinsieme rappresentativo di ~70 opcode dei vettori per-istruzione 8088
-(648.000 casi) il core supera **~98,4%** (637.631/648.000), con i flag indefiniti
-mascherati per-opcode. Tutte le istruzioni a **comportamento definito** passano al
-100% (ALU 8/16 bit, MOV, shift/rotate, stringhe, MUL/IMUL, INC/DEC, salti, stack
-incluso il quirk PUSH SP, ecc.).
+Sull'**intero set v2** dei vettori per-istruzione 8088 (323 file, 3.007.000 casi)
+il core supera **99,15%** (2.981.451/3.007.000), con i flag indefiniti mascherati
+per-opcode. **Tutte le istruzioni a comportamento definito passano al 100%** —
+l'intera ISA dell'8088, compresi gli opcode non documentati (alias `Jcc` 0x60-0x6F,
+`SETMO`/`SETMOC`, `SALC`) e i quirk noti (`PUSH SP`).
 
-I ~10.000 casi residui sono **comportamento indefinito** dell'8086, non bug:
+I ~25.500 casi residui sono **comportamento indefinito** dell'8086, non bug:
 
 - `DIV`/`IDIV`/`AAM` in errore di divisione (#DE) impilano sullo stack i flag che
   il silicio lascia indefiniti dopo l'operazione abortita (non mascherabili a
@@ -99,7 +99,8 @@ I ~10.000 casi residui sono **comportamento indefinito** dell'8086, non bug:
 - `DAA`/`DAS` su input BCD **non validi** (nibble fuori 0-9), che producono
   risultati specifici del silicio.
 
-Per riprodurre: scaricare i file `vN/*.json.gz` da
+Il loader distingue *passati* / *errati* / *non implementati*. Per riprodurre:
+scaricare i file `v2/*.json.gz` da
 [SingleStepTests/8088](https://github.com/SingleStepTests/8088) in una cartella e
 
 ```bash
