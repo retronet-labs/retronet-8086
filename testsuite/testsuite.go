@@ -23,6 +23,7 @@ import (
 // vector e' un singolo caso di test del formato SingleStepTests.
 type vector struct {
 	Name    string `json:"name"`
+	Bytes   []int  `json:"bytes"`
 	Initial state  `json:"initial"`
 	Final   state  `json:"final"`
 }
@@ -121,13 +122,19 @@ func RunBytes(data []byte, opt Options) (Result, error) {
 		backend = cpu.Gate
 	}
 
+	// Una sola CPU riusata per tutti i vettori: la RAM da 1 MB si alloca una volta
+	// e tra un vettore e l'altro si azzerano solo le celle toccate (i vettori
+	// assumono memoria a zero salvo le celle elencate).
+	c := cpu.NewCPU8086WithALU(backend)
+	var touched []uint32
+
 	var r Result
 	for i, v := range vectors {
 		if opt.MaxPerFile > 0 && i >= opt.MaxPerFile {
 			break
 		}
 		r.Total++
-		if msg, ok := runVector(v, backend, opt.FlagMask); ok {
+		if msg, ok := runVector(c, &touched, v, opt.FlagMask); ok {
 			r.Passed++
 		} else {
 			r.Failures = append(r.Failures, fmt.Sprintf("%s: %s", v.Name, msg))
@@ -139,20 +146,91 @@ func RunBytes(data []byte, opt Options) (Result, error) {
 	return r, nil
 }
 
-// runVector imposta lo stato iniziale, esegue uno Step e confronta col finale.
-func runVector(v vector, backend cpu.ALUBackend, flagMask uint16) (string, bool) {
-	c := cpu.NewCPU8086WithALU(backend)
-	applyRegs(c, v.Initial.Regs)
-	applyRAM(c, v.Initial.RAM)
+// runVector ripristina la CPU riusata, imposta lo stato iniziale, esegue uno Step
+// e confronta col finale. touched accumula le celle scritte da azzerare prima del
+// vettore successivo.
+func runVector(c *cpu.CPU8086, touched *[]uint32, v vector, flagMask uint16) (string, bool) {
+	for _, a := range *touched {
+		c.Mem.Write8(a, 0)
+	}
+	*touched = (*touched)[:0]
+
+	c.Halted = false
+	applyRegs(c, v.Initial.Regs) // i vettori v2 specificano tutti i registri
+	for _, cell := range v.Initial.RAM {
+		a := uint32(cell[0]) & cpu.AddressMask
+		c.Mem.Write8(a, byte(cell[1]))
+		*touched = append(*touched, a)
+	}
+	for _, cell := range v.Final.RAM {
+		*touched = append(*touched, uint32(cell[0])&cpu.AddressMask)
+	}
 
 	if err := c.Step(); err != nil {
 		return "Step: " + err.Error(), false
 	}
-
-	if msg, ok := checkRegs(c, v.Final.Regs, flagMask); !ok {
+	// Ai flag ignorati richiesti si aggiungono quelli che l'8086 lascia
+	// *indefiniti* per questa istruzione (e che il silicio riempie in modo non
+	// documentato): vanno esclusi dal confronto.
+	mask := flagMask | undefinedFlagMask(v.Bytes)
+	if msg, ok := checkRegs(c, v.Final.Regs, mask); !ok {
 		return msg, false
 	}
 	return checkRAM(c, v.Final.RAM)
+}
+
+// undefinedFlagMask restituisce i bit di flag lasciati indefiniti dall'8086 per
+// l'istruzione codificata in bytes (prefissi inclusi). Sono i bit da NON
+// confrontare coi vettori, che li riportano coi valori reali del silicio.
+func undefinedFlagMask(bytes []int) uint16 {
+	const (
+		CF = 1 << 0
+		PF = 1 << 2
+		AF = 1 << 4
+		ZF = 1 << 6
+		SF = 1 << 7
+		OF = 1 << 11
+	)
+	i := 0
+	for i < len(bytes) && isPrefixByte(byte(bytes[i])) {
+		i++
+	}
+	if i >= len(bytes) {
+		return 0
+	}
+	op := byte(bytes[i])
+	var reg byte
+	if i+1 < len(bytes) {
+		reg = byte(bytes[i+1]) >> 3 & 0x07
+	}
+	switch op {
+	case 0x27, 0x2F: // DAA/DAS: OF indefinito
+		return OF
+	case 0x37, 0x3F: // AAA/AAS: OF/SF/ZF/PF indefiniti
+		return OF | SF | ZF | PF
+	case 0xD4, 0xD5: // AAM/AAD: OF/CF/AF indefiniti
+		return OF | CF | AF
+	case 0xD0, 0xD1: // shift/rotate per 1: AF indefinito (OF definito)
+		return AF
+	case 0xD2, 0xD3: // shift/rotate per CL: AF e OF indefiniti (OF solo se CL==1)
+		return AF | OF
+	case 0xF6, 0xF7:
+		switch reg {
+		case 4, 5: // MUL/IMUL: SF/ZF/AF/PF indefiniti (CF/OF definiti)
+			return SF | ZF | AF | PF
+		case 6, 7: // DIV/IDIV: tutti i flag aritmetici indefiniti
+			return CF | OF | SF | ZF | AF | PF
+		}
+	}
+	return 0
+}
+
+func isPrefixByte(b byte) bool {
+	switch b {
+	case 0x26, 0x2E, 0x36, 0x3E, 0xF0, 0xF2, 0xF3:
+		return true
+	}
+	return false
 }
 
 func applyRegs(c *cpu.CPU8086, regs map[string]int) {
@@ -188,12 +266,6 @@ func applyRegs(c *cpu.CPU8086, regs map[string]int) {
 		case "flags":
 			c.SetFlags(v)
 		}
-	}
-}
-
-func applyRAM(c *cpu.CPU8086, ram [][]int) {
-	for _, cell := range ram {
-		c.Mem.Write8(uint32(cell[0])&cpu.AddressMask, byte(cell[1]))
 	}
 }
 
