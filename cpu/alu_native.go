@@ -42,7 +42,7 @@ func natArith(a, b uint16, width int, cin, isSub bool) (uint16, i8086.Flags) {
 	xorc := res ^ av ^ addend
 	carryOut := res>>uint(width)&1 == 1
 	carryMSB := xorc>>uint(width-1)&1 == 1
-	carry4 := xorc>>4&1 == 1
+	af := (av^bv^out)>>4&1 == 1 // AF dai valori originali (b non complementato)
 
 	carry := carryOut
 	if isSub {
@@ -51,7 +51,7 @@ func natArith(a, b uint16, width int, cin, isSub bool) (uint16, i8086.Flags) {
 	return uint16(out), i8086.Flags{
 		Carry:     carry,
 		Parity:    parityEvenLow8(out),
-		Auxiliary: carry4,
+		Auxiliary: af,
 		Zero:      out == 0,
 		Sign:      out>>uint(width-1)&1 == 1,
 		Overflow:  carryMSB != carryOut,
