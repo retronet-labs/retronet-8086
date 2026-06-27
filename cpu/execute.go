@@ -273,6 +273,20 @@ func (c *CPU8086) execute(op byte, pfx prefixes) error {
 	case 0xD7: // XLAT: AL = [DS:BX+AL]
 		c.Set8(AL, c.readMem8(c.segFor(DS, pfx), c.Regs[BX]+uint16(c.Get8(AL))))
 
+	// --- aggiustamenti BCD/ASCII ---
+	case 0x27:
+		c.daa()
+	case 0x2F:
+		c.das()
+	case 0x37:
+		c.aaa()
+	case 0x3F:
+		c.aas()
+	case 0xD4:
+		c.aam()
+	case 0xD5:
+		c.aad()
+
 	// --- shift e rotate ---
 	case 0xD0:
 		c.shiftRM(false, 1, pfx)
