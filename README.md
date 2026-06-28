@@ -42,7 +42,8 @@ c.Profile = cpu.Profile8088 // 8 bit,  coda 4 byte (default, IBM XT)
 ```bash
 go run ./cmd/retronet-8086 -profiles                 # elenca 8086/8088
 go run ./cmd/retronet-8086 -conformance              # batteria sintetica
-go run ./cmd/retronet-8086 -bin prog.bin -trace      # esegue un binario raw
+go run ./cmd/retronet-8086 -bin prog.bin -trace      # esegue con trace disassemblato
+go run ./cmd/retronet-8086 -bin prog.bin -disasm 10  # elenca 10 istruzioni
 go run ./cmd/retronet-8086 -bin prog.bin -alu native # con ALU native
 go run ./cmd/retronet-8086 -testsuite <dir-vettori>  # SingleStepTests 8088
 ```
@@ -78,10 +79,12 @@ Implementato e testato (`go test ./...` verde):
   BCD/ASCII (`DAA/DAS/AAA/AAS/AAM/AAD`), salti e `Jcc`, `LOOP`/`JCXZ`,
   CALL/RET(F), INT/IRET/INTO (con #DE su divisione per zero), operazioni sui
   flag, CBW/CWD, SAHF/LAHF, IN/OUT, HLT, prefissi (override di segmento, LOCK, REP).
-- CLI `cmd/retronet-8086` (esecuzione raw, profili, conformance, testsuite),
-  batteria di **conformance** sintetica e loader **SingleStepTests** (TomHarte)
-  per la validazione per-istruzione (dataset fuori dal repo). Vedi
-  [docs/architettura.md](docs/architettura.md).
+- **Disassembler** simmetrico al decoder (`Disassemble`), usato dal `-trace` e da
+  `-disasm`.
+- CLI `cmd/retronet-8086` (esecuzione raw, trace disassemblato, profili,
+  conformance, testsuite), batteria di **conformance** sintetica e loader
+  **SingleStepTests** (TomHarte) per la validazione per-istruzione (dataset fuori
+  dal repo). Vedi [docs/architettura.md](docs/architettura.md).
 
 ## Validazione SingleStepTests (TomHarte)
 
@@ -109,9 +112,9 @@ go run ./cmd/retronet-8086 -testsuite <dir-vettori>   # oppure -alu native (piu'
 
 In lavorazione (prossimi passi):
 
-- Disassembler simmetrico al decoder (per un trace leggibile).
 - Replica opzionale dei flag indefiniti del silicio per i casi #DE (per la resa
   totale su SingleStepTests).
+- **retronet-pc**: bus mappato dietro `cpu.Bus` e periferiche XT dietro `cpu.Ports`.
 
 ## Sviluppo locale (multi-repo)
 
