@@ -21,6 +21,7 @@ func main() {
 	aluName := flag.String("alu", "gate", "backend ALU: gate oppure native")
 	loadSeg := flag.Int("seg", 0x0000, "segmento di caricamento (CS)")
 	loadOff := flag.Int("off", 0x0100, "offset di caricamento (IP)")
+	disasm := flag.Int("disasm", 0, "disassembla N istruzioni del binario e termina")
 	suite := flag.String("testsuite", "", "directory dei vettori SingleStepTests/8088 da eseguire")
 	flag.Parse()
 
@@ -35,6 +36,9 @@ func main() {
 		return
 	case *suite != "":
 		runSuite(*suite, backendFor(*aluName))
+		return
+	case *bin != "" && *disasm > 0:
+		listBinary(*bin, uint16(*loadSeg), uint16(*loadOff), *disasm)
 		return
 	case *bin != "":
 		runBinary(*bin, backendFor(*aluName), uint16(*loadSeg), uint16(*loadOff), *steps, *trace)
@@ -81,10 +85,29 @@ func runBinary(path string, backend cpu.ALUBackend, seg, off uint16, steps int, 
 	printState(c)
 }
 
+func listBinary(path string, seg, off uint16, count int) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "errore:", err)
+		os.Exit(1)
+	}
+	c := cpu.NewCPU8086()
+	c.Mem.(*cpu.RAM).LoadAt(cpu.PhysAddr(seg, off), data)
+	ip := off
+	for i := 0; i < count; i++ {
+		text, length := c.Disassemble(seg, ip)
+		fmt.Printf("%04X:%04X  %s\n", seg, ip, text)
+		if length == 0 {
+			length = 1
+		}
+		ip += uint16(length)
+	}
+}
+
 func printState(c *cpu.CPU8086) {
-	op := c.Mem.Read8(cpu.PhysAddr(c.Seg[cpu.CS], c.IP))
-	fmt.Printf("%04X:%04X op=%02X  AX=%04X BX=%04X CX=%04X DX=%04X  SP=%04X BP=%04X SI=%04X DI=%04X  DS=%04X ES=%04X SS=%04X  F=%04X\n",
-		c.Seg[cpu.CS], c.IP, op,
+	text, _ := c.Disassemble(c.Seg[cpu.CS], c.IP)
+	fmt.Printf("%04X:%04X  %-22s  AX=%04X BX=%04X CX=%04X DX=%04X  SP=%04X BP=%04X SI=%04X DI=%04X  DS=%04X ES=%04X SS=%04X  F=%04X\n",
+		c.Seg[cpu.CS], c.IP, text,
 		c.Regs[cpu.AX], c.Regs[cpu.BX], c.Regs[cpu.CX], c.Regs[cpu.DX],
 		c.Regs[cpu.SP], c.Regs[cpu.BP], c.Regs[cpu.SI], c.Regs[cpu.DI],
 		c.Seg[cpu.DS], c.Seg[cpu.ES], c.Seg[cpu.SS], c.PackFlags())
