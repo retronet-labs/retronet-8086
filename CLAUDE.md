@@ -52,9 +52,12 @@ architettura: [docs/architettura.md](docs/architettura.md).
 - **Decoder/execute**: ModR/M a 16 bit + override di segmento; tabella opcode +
   gruppi (`80`-`83`, `F6`/`F7`, `FE`/`FF`, `D0`-`D3`). `disasm.go` è simmetrico
   al decoder (usato da `-trace`/`-disasm`).
-- **interrupts.go**: `INT n`/`IRET`/`INTO`, vettori a 0x0000, #DE su div-by-zero;
-  API pubblica **`Interrupt(n)`** (sveglia da HLT) e **`InterruptsEnabled()`** —
-  usate da retronet-pc per consegnare gli IRQ hardware.
+- **interrupts.go** / **step.go**: `INT n`/`INT 3` (0xCC)/`IRET`/`INTO`, vettori a
+  0x0000, #DE su div-by-zero; **Trap Flag** (single-step → `INT 1`): TF campionato
+  PRIMA dell'istruzione, così un'istruzione che abilita TF (POPF/IRET) non fa trap
+  su se stessa e la sequenza d'interrupt (che azzera TF) non ricorre — è ciò che fa
+  funzionare il `T` di DEBUG.COM. API pubblica **`Interrupt(n)`** (sveglia da HLT) e
+  **`InterruptsEnabled()`** — usate da retronet-pc per gli IRQ hardware.
 - **memory.go**/**io.go**: bus 1 MB mappabile (`Bus`) e spazio I/O 64K (`Ports`);
   retronet-pc vi innesta le proprie implementazioni assegnando `c.Mem` e `c.IO`.
 
@@ -65,6 +68,9 @@ architettura: [docs/architettura.md](docs/architettura.md).
 — alias `Jcc` 0x60-0x6F, `SETMO`/`SETMOC`, `SALC` — e quirk come `PUSH SP`). I
 ~25.500 casi residui sono **comportamento indefinito** del silicio (flag impilati
 dopo #DE su DIV/IDIV/AAM; DAA/DAS su BCD non validi), non bug.
+
+Supporto debugger: **Trap Flag (single-step, INT 1)** e **INT 3** verificati con
+test dedicati (`cpu/interrupts_test.go`) — abilitano i debugger DOS sotto retronet-pc.
 
 Tag: `v0.1.0`, **`v0.1.1`** (API interrupt pubblica). retronet-pc usa `v0.1.0+`.
 
